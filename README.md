@@ -5,13 +5,19 @@
 
 - [Overview](#overview)
 - [Example](#example)
-- [Development](#development)
+- [Firebase Setup](#firebase-setup)
+- [Development](#deployment)
+- [Build Setup](#build-setup)
 
 ## Overview
 
 This project is based on [SimpleWebAuthn](https://github.com/MasterKale/SimpleWebAuthn). WebAuthn hosting server needs https but it's hard to set up. Firebase gives us that environment so you can easliy set up WebAuthn server if you have Firebase account. 
 
 [MasterKale](https://github.com/MasterKale), thank you for great project [SimpleWebAuthn](https://github.com/MasterKale/SimpleWebAuthn).
+
+## Example
+
+![demo](https://user-images.githubusercontent.com/22928833/187209318-994c3854-cfff-4912-82ef-97256b0381f6.gif)
 
 ## Firebase Setup
 
@@ -95,34 +101,6 @@ change Cloud Functions URL in .env.production:
 CLOUD_FUNCTION_URL="https://asia-northeast1-xxxx.cloudfunctions.net/api"
 ```
 
-
-
-
-```
-
-
-# build for production and launch server
-$ yarn build
-$ yarn start
-
-# generate static project
-$ yarn generate
-
-
-To run unit tests for all tracked lerna packages, run the following:
-
-```sh
-$> npx lerna run test
-```
-
-Running Jest in watch mode for a specific project requires the use of `lerna exec`:
-
-```sh
-$> npx lerna exec npm run test:watch --scope=@simplewebauthn/server
-```
-
-## Build Setup
-
 ```bash
 # install dependencies
 $ yarn install
@@ -136,5 +114,4 @@ $ yarn start
 
 # generate static project
 $ yarn generate
-
 ```
