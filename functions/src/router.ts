@@ -39,8 +39,6 @@ interface LoggedInUser {
   currentChallenge?: string;
 }
 
-const loggedInUserId = "internalUserId";
-
 // eslint-disable-next-line require-jsdoc
 async function getUserFromFireStore(userId: string, rpId: string) : Promise<LoggedInUser> {
   const userRef = admin.firestore().collection("users").doc(userId);
@@ -73,7 +71,7 @@ async function getUserFromFireStore(userId: string, rpId: string) : Promise<Logg
  * Registration (a.k.a. "Registration")
  */
 router.get("/generate-registration-options", async (req, res) => {
-  let userId = loggedInUserId;
+  let userId = "";
   if (req.query.userId) {
     userId = req.query.userId as string;
   } else {
@@ -207,7 +205,7 @@ router.post("/verify-registration", async (req, res) => {
 });
 
 router.get("/generate-authentication-options", async (req, res) => {
-  let userId = loggedInUserId;
+  let userId = "";
   if (req.query.userId) {
     userId = req.query.userId as string;
   } else {

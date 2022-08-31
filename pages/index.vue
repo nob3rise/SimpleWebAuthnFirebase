@@ -13,6 +13,7 @@
               v-model="userId"
               label="User ID"
               clearable
+              name="username" autocomplete="webauthn"
             ></v-text-field>
           </v-col>
           <v-btn color="primary" class="ma-2" min-width="180" @click="register()" :disabled="userId ? false : true">
@@ -66,7 +67,7 @@ export default Vue.extend({
   name: "IndexPage",
   data() {
     return {
-      userId: "internalUserId",
+      userId: "",
       showConsole: true,
       messageConsole: "",
       messageStatus: "",
