@@ -8,48 +8,104 @@
     <v-row justify="center">
       <v-col cols="12" sm="10" md="8" align="center">
         <v-card class="mx-auto pa-2">
-          <v-col cols="6" sm="5" md="4" align="center">
-            <v-text-field
-              v-model="userId"
-              label="User ID"
-              clearable
-              name="username" autocomplete="webauthn"
-            ></v-text-field>
-          </v-col>
-          <v-btn color="primary" class="ma-2" min-width="180" @click="register()" :disabled="userId ? false : true">
-            <v-icon right dark class="ma-2"> mdi-account-plus </v-icon>
-            Regisger
-          </v-btn>
-          <v-btn color="primary" class="ma-2" min-width="180" @click="authenticate()" :disabled="userId ? false : true">
-            <v-icon right dark class="ma-2"> mdi-account-key </v-icon>
-            Authenticate
-          </v-btn>
-          <div
-            :class="messageStatusClass"
-            v-if="messageStatus"
-          >
-            {{messageStatus}}
-          </div>
-          <div class="text-center text-h6">
-            <v-icon
-              right
-              dark
-              @click="showConsole = !showConsole"
-              v-if="showConsole"
+          <v-card-text>
+            <div class="red--text text-h4">{{ messageCheck }}</div>
+          </v-card-text>
+          <v-row justify="center">
+            <v-col cols="6" sm="5" md="4" align="center">
+              <v-text-field
+                v-model="userId"
+                label="User ID"
+                clearable
+                name="username"
+              ></v-text-field>
+            </v-col>
+          </v-row>
+          <v-row justify="center">
+            <v-col cols="4" sm="4" md="4">
+              <v-combobox
+                label="attestationType"
+                v-model="selectAttestationType"
+                :items="itemAttestationType"
+                dense
+                outlined
+              ></v-combobox>
+              <v-combobox
+                label="userVerification"
+                v-model="selectUserVerification"
+                :items="itemUserVerification"
+                dense
+                outlined
+              ></v-combobox>
+            </v-col>
+            <v-col cols="4" sm="4" md="4">
+              <v-combobox
+                label="residentKey"
+                v-model="selectResidentKey"
+                :items="itemResidentKey"
+                dense
+                outlined
+              ></v-combobox>
+              <v-combobox
+                label="authenticatorAttachment"
+                v-model="selectAuthenticatorAttachment"
+                :items="itemAuthenticatorAttachment"
+                dense
+                outlined
+              ></v-combobox>
+            </v-col>
+          </v-row>
+          <v-row justify="center">
+            <v-btn
+              color="primary"
+              class="ma-2"
+              min-width="180"
+              @click="register()"
+              :disabled="userId ? false : true"
             >
-              mdi-chevron-down-circle-outline
-            </v-icon>
-            <v-icon right dark @click="showConsole = !showConsole" v-else>
-              mdi-chevron-up-circle-outline
-            </v-icon>
-            Console
-          </div>
-          <v-textarea
-            v-if="showConsole"
-            outlined
-            :value="messageConsole"
-            rows="20"
-          ></v-textarea>
+              <v-icon right dark class="ma-2"> mdi-account-plus </v-icon>
+              Regisger
+            </v-btn>
+            <v-btn
+              color="primary"
+              class="ma-2"
+              min-width="180"
+              @click="authenticate()"
+              :disabled="userId ? false : true"
+            >
+              <v-icon right dark class="ma-2"> mdi-account-key </v-icon>
+              Authenticate
+            </v-btn>
+          </v-row>
+          <v-row justify="center">
+            <div :class="messageStatusClass" v-if="messageStatus">
+              {{ messageStatus }}
+            </div>
+          </v-row>
+          <v-row>
+            <div class="text-center text-h6">
+              <v-icon
+                right
+                dark
+                @click="showConsole = !showConsole"
+                v-if="showConsole"
+              >
+                mdi-chevron-down-circle-outline
+              </v-icon>
+              <v-icon right dark @click="showConsole = !showConsole" v-else>
+                mdi-chevron-up-circle-outline
+              </v-icon>
+              Console
+            </div>
+          </v-row>
+          <v-row>
+            <v-textarea
+              v-if="showConsole"
+              outlined
+              :value="messageConsole"
+              rows="20"
+            ></v-textarea>
+          </v-row>
         </v-card>
       </v-col>
     </v-row>
@@ -67,12 +123,43 @@ export default Vue.extend({
   name: "IndexPage",
   data() {
     return {
+      itemAttestationType: ["direct", "none"],
+      itemUserVerification: ["required", "preferred", "discouraged"],
+      itemResidentKey: ["required", "preferred", "discouraged"],
+      itemAuthenticatorAttachment: ["all", "platform", "cross-platform"],
+      selectAttestationType: "direct",
+      selectUserVerification: "required",
+      selectResidentKey: "required",
+      selectAuthenticatorAttachment: "all",
       userId: "",
       showConsole: true,
       messageConsole: "",
       messageStatus: "",
       messageStatusClass: "ma-2 text-h6",
+      messageCheck: "",
     };
+  },
+  mounted: function () {
+    let me = this;
+    try {
+      if (!window.PublicKeyCredential) {
+        me.messageCheck = "window.PublicKeyCredntial is not defined";
+        return;
+      }
+      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+        .then(function (available) {
+          if (available) {
+            me.messageCheck = "PlatformAuthenticator is available";
+          } else {
+            me.messageCheck = "PlatformAuthenticator is not available";
+          }
+        })
+        .catch(function (err) {
+          throw err;
+        });
+    } catch (err) {
+      this.messageCheck = err as string;
+    }
   },
   methods: {
     async register() {
@@ -80,12 +167,17 @@ export default Vue.extend({
 
       try {
         const opts = await this.$axios.$get(
-          `${process.env.CLOUD_FUNCTION_URL}/generate-registration-options?userId=${this.userId}`
+          `${process.env.CLOUD_FUNCTION_URL}/generate-registration-options` +
+            `?userId=${this.userId}` +
+            `&attestationType=${this.selectAttestationType}` +
+            `&userVerification=${this.selectUserVerification}` +
+            `&residentKey=${this.selectResidentKey}` +
+            `&authenticatorAttachment=${this.selectAuthenticatorAttachment}`
         );
 
         // Require a resident key for this demo
-        opts.authenticatorSelection.residentKey = "required";
-        opts.authenticatorSelection.requireResidentKey = true;
+        // opts.authenticatorSelection.residentKey = "required";
+        // opts.authenticatorSelection.requireResidentKey = true;
         opts.extensions = {
           credProps: true,
         };
@@ -103,7 +195,7 @@ export default Vue.extend({
 
         const verificationResp = await this.$axios.$post(
           `${process.env.CLOUD_FUNCTION_URL}/verify-registration`,
-          JSON.stringify({credential: regCred, userId: this.userId}),
+          JSON.stringify({ credential: regCred, userId: this.userId }),
           {
             headers: {
               "Content-Type": "application/json",
@@ -120,7 +212,6 @@ export default Vue.extend({
           this.messageStatus = "Oh no, something went wrong!";
           this.messageStatusClass += " red--text";
         }
-
       } catch (error) {
         console.log(error);
       }
@@ -130,13 +221,18 @@ export default Vue.extend({
 
       try {
         const opts = await this.$axios.$get(
-          `${process.env.CLOUD_FUNCTION_URL}/generate-authentication-options?userId=${this.userId}`
+          `${process.env.CLOUD_FUNCTION_URL}/generate-authentication-options` +
+            `?userId=${this.userId}` +
+            `&attestationType=${this.selectAttestationType}` +
+            `&userVerification=${this.selectUserVerification}` +
+            `&residentKey=${this.selectResidentKey}` +
+            `&authenticatorAttachment=${this.selectAuthenticatorAttachment}`
         );
         // console.log("opts", opts);
         this.messageConsole =
           "// Authentication Options\n" + `${JSON.stringify(opts, null, 2)}\n`;
 
-        const authCred = await startAuthentication(opts);
+        const authCred = await startAuthentication(opts, false);
         // console.log("authCred", authCred);
         this.messageConsole =
           this.messageConsole +
@@ -145,7 +241,7 @@ export default Vue.extend({
 
         const verificationResp = await this.$axios.$post(
           `${process.env.CLOUD_FUNCTION_URL}/verify-authentication`,
-          JSON.stringify({credential: authCred, userId: this.userId}),
+          JSON.stringify({ credential: authCred, userId: this.userId }),
           {
             headers: {
               "Content-Type": "application/json",

@@ -40,7 +40,10 @@ interface LoggedInUser {
 }
 
 // eslint-disable-next-line require-jsdoc
-async function getUserFromFireStore(userId: string, rpId: string) : Promise<LoggedInUser> {
+async function getUserFromFireStore(
+    userId: string,
+    rpId: string
+): Promise<LoggedInUser> {
   const userRef = admin.firestore().collection("users").doc(userId);
   return await userRef.get().then((userDoc) => {
     if (userDoc.exists) {
@@ -71,9 +74,20 @@ async function getUserFromFireStore(userId: string, rpId: string) : Promise<Logg
  * Registration (a.k.a. "Registration")
  */
 router.get("/generate-registration-options", async (req, res) => {
-  let userId = "";
+  let userId: string;
+  let attestationType: AttestationConveyancePreference;
+  let userVerification: UserVerificationRequirement;
+  let residentKey: ResidentKeyRequirement;
+  let authenticatorAttachment: AuthenticatorAttachment;
+
   if (req.query.userId) {
     userId = req.query.userId as string;
+    attestationType = req.query
+        .attestationType as AttestationConveyancePreference;
+    userVerification = req.query
+        .userVerification as UserVerificationRequirement;
+    residentKey = req.query.residentKey as ResidentKeyRequirement;
+    authenticatorAttachment = req.query.authenticatorAttachment as AuthenticatorAttachment;
   } else {
     throw Error("Request userId is unset");
   }
@@ -84,7 +98,7 @@ router.get("/generate-registration-options", async (req, res) => {
 
   const originUrl = new URL(req.headers.origin);
   const rpId = originUrl.hostname;
-  const user : LoggedInUser = await getUserFromFireStore(userId, rpId);
+  const user: LoggedInUser = await getUserFromFireStore(userId, rpId);
 
   functions.logger.log("generate-registration-options: user", user);
 
@@ -102,7 +116,7 @@ router.get("/generate-registration-options", async (req, res) => {
     userID: userId,
     userName: username,
     timeout: 60000,
-    attestationType: "none",
+    attestationType: attestationType,
     /**
      * Passing in a user's list of already-registered authenticator IDs here prevents users from
      * registering the same device multiple times. The authenticator will simply throw an error in
@@ -119,14 +133,22 @@ router.get("/generate-registration-options", async (req, res) => {
      * the types of authenticators that users to can use for registration
      */
     authenticatorSelection: {
-      userVerification: "required",
-      residentKey: "required",
+      userVerification: userVerification,
+      residentKey: residentKey,
     },
     /**
      * Support the two most common algorithms: ES256, and RS256
      */
     supportedAlgorithmIDs: [-7, -257],
   };
+
+  if (
+    authenticatorAttachment == "platform" ||
+    authenticatorAttachment == "cross-platform"
+  ) {
+    opts.authenticatorSelection!.authenticatorAttachment =
+      authenticatorAttachment;
+  }
 
   const options = generateRegistrationOptions(opts);
 
@@ -136,11 +158,14 @@ router.get("/generate-registration-options", async (req, res) => {
   //  */
   const userRef = admin.firestore().collection("users").doc(userId);
   await userRef.set(
-      {id: user.id,
+      {
+        id: user.id,
         username: user.username,
         devices: user.devices,
-        currentChallenge: options.challenge},
-      {merge: true});
+        currentChallenge: options.challenge,
+      },
+      {merge: true}
+  );
 
   res.send(options);
 });
@@ -154,9 +179,9 @@ router.post("/verify-registration", async (req, res) => {
     }
 
     const originUrl = new URL(req.headers.origin);
-    const rpId : string = originUrl.hostname;
-    const userId : string = req.body.userId;
-    const user : LoggedInUser = await getUserFromFireStore(userId, rpId);
+    const rpId: string = originUrl.hostname;
+    const userId: string = req.body.userId;
+    const user: LoggedInUser = await getUserFromFireStore(userId, rpId);
     functions.logger.log("verify-registration: user", user);
 
     const expectedChallenge = user.currentChallenge;
@@ -169,7 +194,8 @@ router.post("/verify-registration", async (req, res) => {
       requireUserVerification: true,
     };
 
-    const verification: VerifiedRegistrationResponse = await verifyRegistrationResponse(opts);
+    const verification: VerifiedRegistrationResponse =
+      await verifyRegistrationResponse(opts);
 
     const {verified, registrationInfo} = verification;
 
@@ -205,9 +231,13 @@ router.post("/verify-registration", async (req, res) => {
 });
 
 router.get("/generate-authentication-options", async (req, res) => {
-  let userId = "";
+  let userId: string;
+  let userVerification: UserVerificationRequirement;
+
   if (req.query.userId) {
     userId = req.query.userId as string;
+    userVerification = req.query
+        .userVerification as UserVerificationRequirement;
   } else {
     throw Error("Request userId is unset");
   }
@@ -218,7 +248,7 @@ router.get("/generate-authentication-options", async (req, res) => {
 
   const originUrl = new URL(req.headers.origin);
   const rpId = originUrl.hostname;
-  const user : LoggedInUser = await getUserFromFireStore(userId, rpId);
+  const user: LoggedInUser = await getUserFromFireStore(userId, rpId);
 
   functions.logger.log("generate-authentication-options: user", user);
 
@@ -229,7 +259,7 @@ router.get("/generate-authentication-options", async (req, res) => {
       type: "public-key",
       transports: dev.transports,
     })),
-    userVerification: "required",
+    userVerification: userVerification,
     rpID: rpId,
   };
 
@@ -240,9 +270,7 @@ router.get("/generate-authentication-options", async (req, res) => {
    * after you verify an authenticator response.
    */
   const userRef = admin.firestore().collection("users").doc(userId);
-  await userRef.set(
-      {currentChallenge: options.challenge},
-      {merge: true});
+  await userRef.set({currentChallenge: options.challenge}, {merge: true});
 
   res.send(options);
 });
@@ -256,9 +284,9 @@ router.post("/verify-authentication", async (req, res) => {
     }
 
     const originUrl = new URL(req.headers.origin);
-    const rpId : string = originUrl.hostname;
-    const userId : string = req.body.userId;
-    const user : LoggedInUser = await getUserFromFireStore(userId, rpId);
+    const rpId: string = originUrl.hostname;
+    const userId: string = req.body.userId;
+    const user: LoggedInUser = await getUserFromFireStore(userId, rpId);
 
     functions.logger.log("verify-authentication: user", user);
 
@@ -286,7 +314,8 @@ router.post("/verify-authentication", async (req, res) => {
       authenticator: dbAuthenticator,
       requireUserVerification: true,
     };
-    const verification: VerifiedAuthenticationResponse = await verifyAuthenticationResponse(opts);
+    const verification: VerifiedAuthenticationResponse =
+      await verifyAuthenticationResponse(opts);
     const {verified, authenticationInfo} = verification;
 
     if (verified) {
