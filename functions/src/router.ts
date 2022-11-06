@@ -231,37 +231,40 @@ router.post("/verify-registration", async (req, res) => {
 });
 
 router.get("/generate-authentication-options", async (req, res) => {
-  let userId: string;
-  let userVerification: UserVerificationRequirement;
-
-  if (req.query.userId) {
-    userId = req.query.userId as string;
-    userVerification = req.query
-        .userVerification as UserVerificationRequirement;
-  } else {
-    throw Error("Request userId is unset");
-  }
+  let userId = "";
+  let opts: GenerateAuthenticationOptionsOpts;
 
   if (req.headers.origin == null) {
     throw Error("Request origin is unset");
   }
 
+  const userVerification = req.query.userVerification as UserVerificationRequirement;
   const originUrl = new URL(req.headers.origin);
   const rpId = originUrl.hostname;
-  const user: LoggedInUser = await getUserFromFireStore(userId, rpId);
 
-  functions.logger.log("generate-authentication-options: user", user);
-
-  const opts: GenerateAuthenticationOptionsOpts = {
-    timeout: 60000,
-    allowCredentials: user.devices.map((dev) => ({
-      id: dev.credentialID,
-      type: "public-key",
-      transports: dev.transports,
-    })),
-    userVerification: userVerification,
-    rpID: rpId,
-  };
+  if (req.query.userId) {
+    userId = req.query.userId as string;
+    const user: LoggedInUser = await getUserFromFireStore(userId, rpId);
+    functions.logger.log("generate-authentication-options: user", user);
+    opts = {
+      timeout: 60000,
+      allowCredentials: user.devices.map((dev) => ({
+        id: dev.credentialID,
+        type: "public-key",
+        transports: dev.transports,
+      })),
+      userVerification: userVerification,
+      rpID: rpId,
+    };
+  } else {
+    functions.logger.log("generate-authentication-options for autofill");
+    opts = {
+      timeout: 60000,
+      allowCredentials: [],
+      userVerification: userVerification,
+      rpID: rpId,
+    };
+  }
 
   const options = generateAuthenticationOptions(opts);
 
@@ -269,9 +272,10 @@ router.get("/generate-authentication-options", async (req, res) => {
    * The server needs to temporarily remember this value for verification, so don't lose it until
    * after you verify an authenticator response.
    */
-  const userRef = admin.firestore().collection("users").doc(userId);
-  await userRef.set({currentChallenge: options.challenge}, {merge: true});
-
+  if (userId) {
+    const userRef = admin.firestore().collection("users").doc(userId);
+    await userRef.set({currentChallenge: options.challenge}, {merge: true});
+  }
   res.send(options);
 });
 

@@ -18,6 +18,17 @@
                 label="User ID"
                 clearable
                 name="username"
+                autocomplete="username webauthn"
+              ></v-text-field>
+            </v-col>
+            <v-col cols="6" sm="5" md="4" align="center">
+              <v-text-field
+                v-model="password"
+                label="Password"
+                type="password"
+                clearable
+                name="password"
+                autocomplete="password webauthn"
               ></v-text-field>
             </v-col>
           </v-row>
@@ -70,7 +81,7 @@
               color="primary"
               class="ma-2"
               min-width="180"
-              @click="authenticate()"
+              @click="authenticate(false)"
               :disabled="userId ? false : true"
             >
               <v-icon right dark class="ma-2"> mdi-account-key </v-icon>
@@ -117,6 +128,7 @@ import {
   startRegistration,
   startAuthentication,
 } from "@simplewebauthn/browser";
+import { FALSE } from "node-sass";
 import Vue from "vue";
 
 export default Vue.extend({
@@ -132,6 +144,7 @@ export default Vue.extend({
       selectResidentKey: "required",
       selectAuthenticatorAttachment: "all",
       userId: "",
+      password: "",
       showConsole: true,
       messageConsole: "",
       messageStatus: "",
@@ -139,24 +152,33 @@ export default Vue.extend({
       messageCheck: "",
     };
   },
-  mounted: function () {
-    let me = this;
+  mounted: async function () {
     try {
-      if (!window.PublicKeyCredential) {
-        me.messageCheck = "window.PublicKeyCredntial is not defined";
+      if (window.PublicKeyCredential.isConditionalMediationAvailable) {
+        if (
+          await window.PublicKeyCredential.isConditionalMediationAvailable()
+        ) {
+          console.log("conditional UI is available");
+          this.authenticate(true);
+        } else {
+          console.log("conditional UI is not available");
+        }
+      } else {
+        console.log("conditional UI is not available");
+      }
+
+      if (window.PublicKeyCredential) {
+        if (
+          await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+        ) {
+          this.messageCheck = "PlatformAuthenticator is available";
+        } else {
+          this.messageCheck = "PlatformAuthenticator is not available";
+        }
+      } else {
+        this.messageCheck = "window.PublicKeyCredntial is not defined";
         return;
       }
-      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
-        .then(function (available) {
-          if (available) {
-            me.messageCheck = "PlatformAuthenticator is available";
-          } else {
-            me.messageCheck = "PlatformAuthenticator is not available";
-          }
-        })
-        .catch(function (err) {
-          throw err;
-        });
     } catch (err) {
       this.messageCheck = err as string;
     }
@@ -216,23 +238,24 @@ export default Vue.extend({
         console.log(error);
       }
     },
-    async authenticate() {
+    async authenticate(useBrowserAutofill: boolean) {
       console.log("authenticate");
 
       try {
-        const opts = await this.$axios.$get(
-          `${process.env.CLOUD_FUNCTION_URL}/generate-authentication-options` +
-            `?userId=${this.userId}` +
-            `&attestationType=${this.selectAttestationType}` +
-            `&userVerification=${this.selectUserVerification}` +
-            `&residentKey=${this.selectResidentKey}` +
-            `&authenticatorAttachment=${this.selectAuthenticatorAttachment}`
-        );
+        let uri = `${process.env.CLOUD_FUNCTION_URL}/generate-authentication-options` +
+          `?attestationType=${this.selectAttestationType}` +
+          `&userVerification=${this.selectUserVerification}` +
+          `&residentKey=${this.selectResidentKey}` +
+          `&authenticatorAttachment=${this.selectAuthenticatorAttachment}`;
+        uri += useBrowserAutofill ? '' : `&userId=${this.userId}`;
+        const opts = await this.$axios.$get(uri);
+        console.log(opts);
+
         // console.log("opts", opts);
         this.messageConsole =
           "// Authentication Options\n" + `${JSON.stringify(opts, null, 2)}\n`;
 
-        const authCred = await startAuthentication(opts, false);
+        const authCred = await startAuthentication(opts, useBrowserAutofill);
         // console.log("authCred", authCred);
         this.messageConsole =
           this.messageConsole +
@@ -241,7 +264,7 @@ export default Vue.extend({
 
         const verificationResp = await this.$axios.$post(
           `${process.env.CLOUD_FUNCTION_URL}/verify-authentication`,
-          JSON.stringify({ credential: authCred, userId: this.userId }),
+          JSON.stringify({ credential: authCred, userId: authCred.response.userHandle! }),
           {
             headers: {
               "Content-Type": "application/json",
