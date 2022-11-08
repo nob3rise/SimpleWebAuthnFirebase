@@ -42,7 +42,6 @@ interface LoggedInUser {
 // eslint-disable-next-line require-jsdoc
 async function getUserFromFireStore(
     userName: string,
-    rpId: string
 ): Promise<LoggedInUser> {
   const userRef = admin.firestore().collection("users").doc(userName);
   return await userRef.get().then((userDoc) => {
@@ -112,7 +111,7 @@ router.get("/generate-registration-options", async (req, res) => {
 
   const originUrl = new URL(req.headers.origin);
   const rpId = originUrl.hostname;
-  const user: LoggedInUser = await getUserFromFireStore(userName, rpId);
+  const user: LoggedInUser = await getUserFromFireStore(userName);
 
   functions.logger.log("generate-registration-options: user", user);
 
@@ -201,7 +200,7 @@ router.post("/verify-registration", async (req, res) => {
     const rpId: string = originUrl.hostname;
     const userName: string = req.body.userName;
     const sessionId: string = req.body.sessionId;
-    const user: LoggedInUser = await getUserFromFireStore(userName, rpId);
+    const user: LoggedInUser = await getUserFromFireStore(userName);
     functions.logger.log("verify-registration: user", user);
 
     const expectedChallenge = await getCurrentChallenge(sessionId);
@@ -266,7 +265,7 @@ router.get("/generate-authentication-options", async (req, res) => {
 
   if (req.query.userName) {
     userName = req.query.userName as string;
-    const user: LoggedInUser = await getUserFromFireStore(userName, rpId);
+    const user: LoggedInUser = await getUserFromFireStore(userName);
     functions.logger.log("generate-authentication-options: user", user);
     opts = {
       timeout: 60000,
@@ -315,7 +314,7 @@ router.post("/verify-authentication", async (req, res) => {
     const rpId: string = originUrl.hostname;
     const userName: string = req.body.userName;
     const sessionId: string = req.body.sessionId;
-    const user: LoggedInUser = await getUserFromFireStore(userName, rpId);
+    const user: LoggedInUser = await getUserFromFireStore(userName);
 
     functions.logger.log("verify-authentication: user", user);
 
