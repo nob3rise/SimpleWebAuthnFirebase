@@ -41,10 +41,10 @@ interface LoggedInUser {
 
 // eslint-disable-next-line require-jsdoc
 async function getUserFromFireStore(
-    userId: string,
+    userName: string,
     rpId: string
 ): Promise<LoggedInUser> {
-  const userRef = admin.firestore().collection("users").doc(userId);
+  const userRef = admin.firestore().collection("users").doc(userName);
   return await userRef.get().then((userDoc) => {
     if (userDoc.exists) {
       const userData = userDoc.data()!;
@@ -57,15 +57,26 @@ async function getUserFromFireStore(
           counter: dev.counter,
           transports: dev.transports,
         })),
-        currentChallenge: userData.currentChallenge!,
       };
     } else {
       return {
-        id: userId,
-        username: `${userId}@${rpId}`,
+        id: userName,
+        username: userName,
         devices: [],
-        currentChallenge: undefined,
       };
+    }
+  });
+}
+
+// eslint-disable-next-line require-jsdoc
+async function getCurrentChallenge(sessionId: string): Promise<string> {
+  const sessionRef = admin.firestore().collection("sessions").doc(sessionId);
+  return await sessionRef.get().then((sessionDoc) => {
+    if (sessionDoc.exists) {
+      const sessionData = sessionDoc.data()!;
+      return sessionData.currentChallenge;
+    } else {
+      throw console.error("no currentChallenge");
     }
   });
 }
@@ -74,22 +85,25 @@ async function getUserFromFireStore(
  * Registration (a.k.a. "Registration")
  */
 router.get("/generate-registration-options", async (req, res) => {
-  let userId: string;
+  let userName: string;
+  let sessionId: string;
   let attestationType: AttestationConveyancePreference;
   let userVerification: UserVerificationRequirement;
   let residentKey: ResidentKeyRequirement;
   let authenticatorAttachment: AuthenticatorAttachment;
 
-  if (req.query.userId) {
-    userId = req.query.userId as string;
+  if (req.query.userName) {
+    userName = req.query.userName as string;
+    sessionId = req.query.sessionId as string;
     attestationType = req.query
         .attestationType as AttestationConveyancePreference;
     userVerification = req.query
         .userVerification as UserVerificationRequirement;
     residentKey = req.query.residentKey as ResidentKeyRequirement;
-    authenticatorAttachment = req.query.authenticatorAttachment as AuthenticatorAttachment;
+    authenticatorAttachment = req.query
+        .authenticatorAttachment as AuthenticatorAttachment;
   } else {
-    throw Error("Request userId is unset");
+    throw Error("Request userName is unset");
   }
 
   if (req.headers.origin == null) {
@@ -98,7 +112,7 @@ router.get("/generate-registration-options", async (req, res) => {
 
   const originUrl = new URL(req.headers.origin);
   const rpId = originUrl.hostname;
-  const user: LoggedInUser = await getUserFromFireStore(userId, rpId);
+  const user: LoggedInUser = await getUserFromFireStore(userName, rpId);
 
   functions.logger.log("generate-registration-options: user", user);
 
@@ -113,7 +127,7 @@ router.get("/generate-registration-options", async (req, res) => {
   const opts: GenerateRegistrationOptionsOpts = {
     rpName: "SimpleWebAuthn Example",
     rpID: rpId,
-    userID: userId,
+    userID: username,
     userName: username,
     timeout: 60000,
     attestationType: attestationType,
@@ -156,16 +170,21 @@ router.get("/generate-registration-options", async (req, res) => {
   //  * The server needs to temporarily remember this value for verification, so don't lose it until
   //  * after you verify an authenticator response.
   //  */
-  const userRef = admin.firestore().collection("users").doc(userId);
+  const userRef = admin.firestore().collection("users").doc(userName);
   await userRef.set(
       {
         id: user.id,
         username: user.username,
         devices: user.devices,
-        currentChallenge: options.challenge,
       },
       {merge: true}
   );
+
+  const sessionRef = admin.firestore().collection("sessions").doc(sessionId);
+  await sessionRef.set({
+    currentChallenge: options.challenge,
+    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+  });
 
   res.send(options);
 });
@@ -180,11 +199,12 @@ router.post("/verify-registration", async (req, res) => {
 
     const originUrl = new URL(req.headers.origin);
     const rpId: string = originUrl.hostname;
-    const userId: string = req.body.userId;
-    const user: LoggedInUser = await getUserFromFireStore(userId, rpId);
+    const userName: string = req.body.userName;
+    const sessionId: string = req.body.sessionId;
+    const user: LoggedInUser = await getUserFromFireStore(userName, rpId);
     functions.logger.log("verify-registration: user", user);
 
-    const expectedChallenge = user.currentChallenge;
+    const expectedChallenge = await getCurrentChallenge(sessionId);
 
     const opts: VerifyRegistrationResponseOpts = {
       credential: regCred,
@@ -218,7 +238,7 @@ router.post("/verify-registration", async (req, res) => {
         };
         user.devices.push(newDevice);
 
-        const userRef = admin.firestore().collection("users").doc(userId);
+        const userRef = admin.firestore().collection("users").doc(userName);
         await userRef.set({devices: user.devices}, {merge: true});
       }
     }
@@ -231,20 +251,22 @@ router.post("/verify-registration", async (req, res) => {
 });
 
 router.get("/generate-authentication-options", async (req, res) => {
-  let userId = "";
+  let userName = "";
   let opts: GenerateAuthenticationOptionsOpts;
 
   if (req.headers.origin == null) {
     throw Error("Request origin is unset");
   }
 
-  const userVerification = req.query.userVerification as UserVerificationRequirement;
+  const sessionId = req.query.sessionId as string;
+  const userVerification = req.query
+      .userVerification as UserVerificationRequirement;
   const originUrl = new URL(req.headers.origin);
   const rpId = originUrl.hostname;
 
-  if (req.query.userId) {
-    userId = req.query.userId as string;
-    const user: LoggedInUser = await getUserFromFireStore(userId, rpId);
+  if (req.query.userName) {
+    userName = req.query.userName as string;
+    const user: LoggedInUser = await getUserFromFireStore(userName, rpId);
     functions.logger.log("generate-authentication-options: user", user);
     opts = {
       timeout: 60000,
@@ -272,10 +294,12 @@ router.get("/generate-authentication-options", async (req, res) => {
    * The server needs to temporarily remember this value for verification, so don't lose it until
    * after you verify an authenticator response.
    */
-  if (userId) {
-    const userRef = admin.firestore().collection("users").doc(userId);
-    await userRef.set({currentChallenge: options.challenge}, {merge: true});
-  }
+  const sessionRef = admin.firestore().collection("sessions").doc(sessionId);
+  await sessionRef.set({
+    currentChallenge: options.challenge,
+    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
   res.send(options);
 });
 
@@ -289,12 +313,13 @@ router.post("/verify-authentication", async (req, res) => {
 
     const originUrl = new URL(req.headers.origin);
     const rpId: string = originUrl.hostname;
-    const userId: string = req.body.userId;
-    const user: LoggedInUser = await getUserFromFireStore(userId, rpId);
+    const userName: string = req.body.userName;
+    const sessionId: string = req.body.sessionId;
+    const user: LoggedInUser = await getUserFromFireStore(userName, rpId);
 
     functions.logger.log("verify-authentication: user", user);
 
-    const expectedChallenge = user.currentChallenge;
+    const expectedChallenge = await getCurrentChallenge(sessionId);
 
     let dbAuthenticator;
     const bodyCredIDBuffer = base64url.toBuffer(authCred.rawId);

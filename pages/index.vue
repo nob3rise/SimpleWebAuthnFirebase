@@ -14,11 +14,12 @@
           <v-row justify="center">
             <v-col cols="6" sm="5" md="4" align="center">
               <v-text-field
-                v-model="userId"
+                v-model="userName"
                 label="User ID"
+                type="text"
                 clearable
                 name="username"
-                autocomplete="username webauthn"
+                autocomplete="webauthn"
               ></v-text-field>
             </v-col>
             <v-col cols="6" sm="5" md="4" align="center">
@@ -28,7 +29,7 @@
                 type="password"
                 clearable
                 name="password"
-                autocomplete="password webauthn"
+                autocomplete="current-password webauthn"
               ></v-text-field>
             </v-col>
           </v-row>
@@ -72,7 +73,7 @@
               class="ma-2"
               min-width="180"
               @click="register()"
-              :disabled="userId ? false : true"
+              :disabled="userName ? false : true"
             >
               <v-icon right dark class="ma-2"> mdi-account-plus </v-icon>
               Regisger
@@ -82,7 +83,7 @@
               class="ma-2"
               min-width="180"
               @click="authenticate(false)"
-              :disabled="userId ? false : true"
+              :disabled="userName ? false : true"
             >
               <v-icon right dark class="ma-2"> mdi-account-key </v-icon>
               Authenticate
@@ -143,7 +144,7 @@ export default Vue.extend({
       selectUserVerification: "required",
       selectResidentKey: "required",
       selectAuthenticatorAttachment: "all",
-      userId: "",
+      userName: "",
       password: "",
       showConsole: true,
       messageConsole: "",
@@ -154,7 +155,18 @@ export default Vue.extend({
   },
   mounted: async function () {
     try {
-      if (window.PublicKeyCredential.isConditionalMediationAvailable) {
+      if (!this.$store.state.user) {
+        await this.$fire.auth.signInAnonymously()
+          .catch((error) => {
+            console.log(error);
+          });
+      } else {
+        console.log("sessionId:", this.$store.state.user);
+      }
+
+      if (
+        window.PublicKeyCredential.isConditionalMediationAvailable
+        ) {
         if (
           await window.PublicKeyCredential.isConditionalMediationAvailable()
         ) {
@@ -183,14 +195,16 @@ export default Vue.extend({
       this.messageCheck = err as string;
     }
   },
+
   methods: {
     async register() {
-      console.log("register");
+      console.log("register", this);
 
       try {
         const opts = await this.$axios.$get(
           `${process.env.CLOUD_FUNCTION_URL}/generate-registration-options` +
-            `?userId=${this.userId}` +
+            `?userName=${this.userName}` +
+            `&sessionId=${this.$store.state.user.uid}` +
             `&attestationType=${this.selectAttestationType}` +
             `&userVerification=${this.selectUserVerification}` +
             `&residentKey=${this.selectResidentKey}` +
@@ -217,7 +231,7 @@ export default Vue.extend({
 
         const verificationResp = await this.$axios.$post(
           `${process.env.CLOUD_FUNCTION_URL}/verify-registration`,
-          JSON.stringify({ credential: regCred, userId: this.userId }),
+          JSON.stringify({ credential: regCred, userName: this.userName, sessionId:this.$store.state.user.uid }),
           {
             headers: {
               "Content-Type": "application/json",
@@ -243,11 +257,12 @@ export default Vue.extend({
 
       try {
         let uri = `${process.env.CLOUD_FUNCTION_URL}/generate-authentication-options` +
-          `?attestationType=${this.selectAttestationType}` +
+          `?sessionId=${this.$store.state.user.uid}` +
+          `&attestationType=${this.selectAttestationType}` +
           `&userVerification=${this.selectUserVerification}` +
           `&residentKey=${this.selectResidentKey}` +
           `&authenticatorAttachment=${this.selectAuthenticatorAttachment}`;
-        uri += useBrowserAutofill ? '' : `&userId=${this.userId}`;
+        uri += useBrowserAutofill ? '' : `&userName=${this.userName}`;
         const opts = await this.$axios.$get(uri);
         console.log(opts);
 
@@ -264,7 +279,7 @@ export default Vue.extend({
 
         const verificationResp = await this.$axios.$post(
           `${process.env.CLOUD_FUNCTION_URL}/verify-authentication`,
-          JSON.stringify({ credential: authCred, userId: authCred.response.userHandle! }),
+          JSON.stringify({ credential: authCred, userName: authCred.response.userHandle!, sessionId: this.$store.state.user.uid }),
           {
             headers: {
               "Content-Type": "application/json",
