@@ -128,6 +128,7 @@
 import {
   startRegistration,
   startAuthentication,
+  browserSupportsWebAuthnAutofill,
 } from "@simplewebauthn/browser";
 import { FALSE } from "node-sass";
 import Vue from "vue";
@@ -163,18 +164,12 @@ export default Vue.extend({
       } else {
         console.log("sessionId:", this.$store.state.user);
       }
-
+      
       if (
-        window.PublicKeyCredential.isConditionalMediationAvailable
-        ) {
-        if (
-          await window.PublicKeyCredential.isConditionalMediationAvailable()
-        ) {
-          console.log("conditional UI is available");
-          this.authenticate(true);
-        } else {
-          console.log("conditional UI is not available");
-        }
+        await browserSupportsWebAuthnAutofill()
+      ) {
+        console.log("conditional UI is available");
+        this.authenticate(true);
       } else {
         console.log("conditional UI is not available");
       }
