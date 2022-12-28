@@ -272,9 +272,10 @@ export default Vue.extend({
           "// Authentication Response\n" +
           `${JSON.stringify(authCred, null, 2)}\n`;
 
+        let userName = authCred.response.userHandle ? authCred.response.userHandle : this.userName;
         const verificationResp = await this.$axios.$post(
           `${process.env.CLOUD_FUNCTION_URL}/verify-authentication`,
-          JSON.stringify({ credential: authCred, userName: authCred.response.userHandle!, sessionId: this.$store.state.user.uid }),
+          JSON.stringify({ credential: authCred, userName: userName, sessionId: this.$store.state.user.uid }),
           {
             headers: {
               "Content-Type": "application/json",
