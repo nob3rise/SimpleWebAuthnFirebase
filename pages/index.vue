@@ -23,14 +23,14 @@
               ></v-text-field>
             </v-col>
             <v-col cols="6" sm="5" md="4" align="center">
-              <v-text-field
+              <!-- <v-text-field
                 v-model="password"
                 label="Password"
                 type="password"
                 clearable
                 name="password"
                 autocomplete="current-password webauthn"
-              ></v-text-field>
+              ></v-text-field> -->
             </v-col>
           </v-row>
           <v-row justify="center">
@@ -46,6 +46,13 @@
                 label="userVerification"
                 v-model="selectUserVerification"
                 :items="itemUserVerification"
+                dense
+                outlined
+              ></v-combobox>
+              <v-combobox
+                label="dpk"
+                v-model="selectDPK"
+                :items="itemDPK"
                 dense
                 outlined
               ></v-combobox>
@@ -141,10 +148,12 @@ export default Vue.extend({
       itemUserVerification: ["required", "preferred", "discouraged"],
       itemResidentKey: ["required", "preferred", "discouraged"],
       itemAuthenticatorAttachment: ["all", "platform", "cross-platform"],
+      itemDPK: ["off", "on"],
       selectAttestationType: "direct",
       selectUserVerification: "required",
       selectResidentKey: "required",
       selectAuthenticatorAttachment: "all",
+      selectDPK: "off",
       userName: "",
       password: "",
       showConsole: true,
@@ -193,7 +202,7 @@ export default Vue.extend({
 
   methods: {
     async register() {
-      console.log("register", this);
+      console.log("register");
 
       try {
         const opts = await this.$axios.$get(
@@ -206,12 +215,11 @@ export default Vue.extend({
             `&authenticatorAttachment=${this.selectAuthenticatorAttachment}`
         );
 
-        // Require a resident key for this demo
-        // opts.authenticatorSelection.residentKey = "required";
-        // opts.authenticatorSelection.requireResidentKey = true;
-        opts.extensions = {
-          credProps: true,
-        };
+        if (this.selectDPK == "on") {
+          opts.extensions.devicePubKey = [];
+        }
+
+        opts.excludeCredentials = [];
 
         // console.log("opts", opts);
         this.messageConsole =
@@ -245,6 +253,7 @@ export default Vue.extend({
         }
       } catch (error) {
         console.log(error);
+        this.messageConsole = this.messageConsole + String(error);
       }
     },
     async authenticate(useBrowserAutofill: boolean) {
@@ -256,7 +265,8 @@ export default Vue.extend({
           `&attestationType=${this.selectAttestationType}` +
           `&userVerification=${this.selectUserVerification}` +
           `&residentKey=${this.selectResidentKey}` +
-          `&authenticatorAttachment=${this.selectAuthenticatorAttachment}`;
+          `&authenticatorAttachment=${this.selectAuthenticatorAttachment}` +
+          `&dpk=${this.selectDPK}`;
         uri += useBrowserAutofill ? '' : `&userName=${this.userName}`;
         const opts = await this.$axios.$get(uri);
         console.log(opts);
@@ -293,6 +303,7 @@ export default Vue.extend({
         }
       } catch (error) {
         console.log(error);
+        this.messageConsole = this.messageConsole + String(error);
       }
     },
   },

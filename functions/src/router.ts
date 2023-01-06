@@ -153,6 +153,7 @@ router.get("/generate-registration-options", async (req, res) => {
      * Support the two most common algorithms: ES256, and RS256
      */
     supportedAlgorithmIDs: [-7, -257],
+    extensions: {},
   };
 
   if (
@@ -164,6 +165,10 @@ router.get("/generate-registration-options", async (req, res) => {
   }
 
   const options = generateRegistrationOptions(opts);
+
+  if (residentKey == "required") {
+    options.extensions!.credProps = true;
+  }
 
   // /**
   //  * The server needs to temporarily remember this value for verification, so don't lose it until
@@ -277,6 +282,15 @@ router.get("/generate-authentication-options", async (req, res) => {
       userVerification: userVerification,
       rpID: rpId,
     };
+
+    if (req.query.dpk == "on") {
+      opts.extensions = {
+        devicePubKey: {
+          attestation: "none",
+          attestationFormats: [],
+        },
+      };
+    }
   } else {
     functions.logger.log("generate-authentication-options for autofill");
     opts = {
